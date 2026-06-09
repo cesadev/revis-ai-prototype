@@ -1,0 +1,411 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Revis.AI — Protótipo</title>
+<script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: 'Inter', system-ui, sans-serif; background: #c7ccd4; padding: 24px; }
+  #root { max-width: 1000px; margin: 0 auto; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const { useState } = React;
+
+function Flower({ size = 22, color = "#0055FF" }) {
+  const petals = [0, 72, 144, 216, 288];
+  return (
+    <svg width={size} height={size} viewBox="0 0 40 40" fill="none">
+      {petals.map((a) => (
+        <ellipse key={a} cx="20" cy="11" rx="6" ry="9" fill={color}
+          transform={`rotate(${a} 20 20)`} opacity="0.92" />
+      ))}
+      <circle cx="20" cy="20" r="4.5" fill="#fff" />
+    </svg>
+  );
+}
+
+// simple inline icon set (no external icon lib)
+const I = {
+  check: "M20 6L9 17l-5-5",
+  home: "M3 9.5L12 3l9 6.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1V9.5z",
+  pencil: "M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z",
+  upload: "M12 17V3M6 9l6-6 6 6M4 21h16",
+  download: "M12 3v14M6 11l6 6 6-6M4 21h16",
+  x: "M18 6L6 18M6 6l12 12",
+  help: "M9.1 9a3 3 0 0 1 5.8 1c0 2-3 3-3 3M12 17h.01",
+  user: "M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2M12 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8z",
+  chevron: "M9 18l6-6-6-6",
+  edit: "M11 4H4v16h16v-7M18.5 2.5a2.1 2.1 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z",
+  file: "M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6zM14 2v6h6",
+  ok: "M22 11.08V12a10 10 0 1 1-5.93-9.14M22 4L12 14.01l-3-3",
+};
+function Icon({ name, size = 18, color = "#000", style }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none"
+      stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={style}>
+      <path d={I[name]} />
+    </svg>
+  );
+}
+
+const SEED_DOCS = [
+  { id: 1, name: "Contrato nº 0428/2024", type: "Contrato", date: "08/06/2026", status: "Pendente" },
+  { id: 2, name: "Ofício SEI 1192/2026", type: "Ofício", date: "02/06/2026", status: "Revisado" },
+  { id: 3, name: "Edital de Licitação 07/2026", type: "Edital", date: "28/05/2026", status: "Revisado" },
+];
+const SEED_FIELDS = [
+  { k: "Contratante", v: "Prefeitura do Recife", conf: "alto" },
+  { k: "Contratada", v: "Construtora Beberibe Ltda.", conf: "alto" },
+  { k: "Nº do contrato", v: "0428/2024", conf: "alto" },
+  { k: "Objeto", v: "Prestação de serviços de manutenção predial", conf: "medio" },
+  { k: "Valor", v: "R$ 248.500,00", conf: "medio" },
+  { k: "Vigência", v: "12 meses", conf: "alto" },
+  { k: "CNPJ", v: "11.222.333/0001-44", conf: "baixo" },
+];
+const SEED_CORR = [
+  { id: "c1", wrong: "prestassão", right: "prestação" },
+  { id: "c2", wrong: "vigencia", right: "vigência" },
+  { id: "c3", wrong: "atravez", right: "através" },
+];
+
+function IconBtn({ children, onClick, t }) {
+  return (
+    <button onClick={onClick}
+      style={{ width: 34, height: 34, borderRadius: 8, border: "none", background: "transparent", cursor: "pointer", display: "grid", placeItems: "center" }}
+      onMouseEnter={(e) => (e.currentTarget.style.background = t.surf2)}
+      onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}>
+      {children}
+    </button>
+  );
+}
+function Spell({ children, on }) {
+  return (
+    <span style={{ textDecoration: "underline wavy #EF4444", textUnderlineOffset: 3,
+      background: on ? "rgba(0,85,255,.18)" : "transparent", borderRadius: 3 }}>{children}</span>
+  );
+}
+
+function RevisAI() {
+  const [dark, setDark] = useState(false);
+  const [topOpen, setTopOpen] = useState(true);
+  const [sidebar, setSidebar] = useState(true);
+  const [screen, setScreen] = useState("check");
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [authOpen, setAuthOpen] = useState(false);
+  const [authMode, setAuthMode] = useState("login");
+  const [authErr, setAuthErr] = useState("");
+  const [email, setEmail] = useState("");
+  const [pass, setPass] = useState("");
+  const [docs, setDocs] = useState(SEED_DOCS);
+  const [fields, setFields] = useState(SEED_FIELDS);
+  const [corr, setCorr] = useState(SEED_CORR);
+  const [hoverCorr, setHoverCorr] = useState(null);
+  const [editIdx, setEditIdx] = useState(null);
+  const [toast, setToast] = useState("");
+  const [uploading, setUploading] = useState(false);
+  const [progress, setProgress] = useState(0);
+  const [dlFmt, setDlFmt] = useState("pdf");
+  const [dlSel, setDlSel] = useState([1]);
+
+  const t = dark
+    ? { bg: "#0E1116", surf: "#1A1F26", surf2: "#222933", text: "#E6E6E6", sub: "#9aa3ad", border: "#2b333d", page: "#0a0d11" }
+    : { bg: "#FFFFFF", surf: "#FFFFFF", surf2: "#F5F5F7", text: "#1A1A1A", sub: "#6b7280", border: "#E0E0E0", page: "#eef1f5" };
+  const BLUE = "#0055FF", GREEN = "#22C55E", RED = "#EF4444";
+
+  const flash = (m) => { setToast(m); setTimeout(() => setToast(""), 2200); };
+  const doLogin = () => { if (!email || !pass) { setAuthErr("Preencha todos os campos."); return; } setAuthErr(""); setAuthOpen(false); flash("Login realizado com sucesso"); };
+  const doRegister = () => { if (!email || !pass) { setAuthErr("Preencha todos os campos."); return; } setAuthErr(""); setAuthMode("login"); flash("Conta criada — faça login"); };
+  const runUpload = () => {
+    setUploading(true); setProgress(0);
+    const iv = setInterval(() => {
+      setProgress((p) => {
+        if (p >= 100) { clearInterval(iv); setUploading(false);
+          setDocs((d) => [{ id: Date.now(), name: "Novo documento.pdf", type: "Contrato", date: "08/06/2026", status: "Pendente" }, ...d]);
+          setScreen("home"); flash("Arquivo enviado"); return 100; }
+        return p + 12;
+      });
+    }, 140);
+  };
+
+  const sideItems = [
+    { id: "check", icon: "check", label: "Verificação" },
+    { id: "home", icon: "home", label: "Home" },
+    { id: "edit", icon: "pencil", label: "Edição" },
+    { id: "upload", icon: "upload", label: "Upload" },
+    { id: "download", icon: "download", label: "Download" },
+  ];
+  const confColor = (c) => (c === "alto" ? GREEN : c === "medio" ? "#F59E0B" : RED);
+  const card = { background: t.surf, border: `1px solid ${t.border}`, borderRadius: 8 };
+  const btnPrimary = { background: BLUE, color: "#fff", border: "none", borderRadius: 8, padding: "10px 16px", fontWeight: 600, cursor: "pointer", fontFamily: "Inter, sans-serif" };
+  const inputStyle = { width: "100%", padding: "10px 12px", borderRadius: 8, border: `1px solid ${t.border}`, background: t.surf2, color: t.text, fontFamily: "Inter, sans-serif", fontSize: 14, outline: "none", boxSizing: "border-box" };
+
+  return (
+    <div style={{ fontFamily: "Inter, system-ui, sans-serif", position: "relative", minHeight: 640, background: t.page, borderRadius: 12, overflow: "hidden", color: t.text }}>
+      <div style={{ position: "absolute", inset: 0, padding: 32, opacity: 0.5, pointerEvents: "none" }}>
+        <div style={{ height: 40, width: "55%", background: dark ? "#1c2229" : "#dfe4ea", borderRadius: 6, marginBottom: 20 }} />
+        {[...Array(8)].map((_, i) => (
+          <div key={i} style={{ height: 12, width: `${90 - i * 6}%`, background: dark ? "#161b21" : "#e6eaef", borderRadius: 4, marginBottom: 12 }} />
+        ))}
+      </div>
+
+      <button onClick={() => setTopOpen((v) => !v)}
+        style={{ position: "absolute", top: 14, right: 14, zIndex: 50, width: 44, height: 44, borderRadius: 12, background: t.surf, border: `1px solid ${t.border}`, boxShadow: "0 6px 20px rgba(0,0,0,.18)", cursor: "pointer", display: "grid", placeItems: "center" }}>
+        <Flower />
+      </button>
+
+      {topOpen && (
+        <div style={{ position: "absolute", top: 0, left: 0, right: 0, zIndex: 40, height: 56, ...card, borderRadius: 0, borderLeft: "none", borderRight: "none", borderTop: "none", display: "flex", alignItems: "center", padding: "0 16px", boxShadow: "0 4px 18px rgba(0,0,0,.12)" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, fontWeight: 700 }}><Flower /> Revis.AI</div>
+          <div style={{ flex: 1, display: "flex", justifyContent: "center", alignItems: "center", gap: 10, fontSize: 13, color: t.sub }}>
+            Barra lateral
+            <button onClick={() => setSidebar((v) => !v)}
+              style={{ width: 40, height: 22, borderRadius: 12, border: "none", cursor: "pointer", background: sidebar ? BLUE : t.border, position: "relative", transition: ".2s" }}>
+              <span style={{ position: "absolute", top: 2, left: sidebar ? 20 : 2, width: 18, height: 18, borderRadius: "50%", background: "#fff", transition: ".2s" }} />
+            </button>
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 6, position: "relative" }}>
+            <IconBtn onClick={() => { setSettingsOpen((v) => !v); setAuthOpen(false); }} t={t}><Flower size={18} /></IconBtn>
+            <IconBtn t={t}><Icon name="help" color={t.sub} /></IconBtn>
+            <IconBtn onClick={() => { setAuthOpen((v) => !v); setSettingsOpen(false); }} t={t}><Icon name="user" color={t.sub} /></IconBtn>
+            <IconBtn onClick={() => setTopOpen(false)} t={t}><Icon name="x" color={t.sub} /></IconBtn>
+
+            {settingsOpen && (
+              <div style={{ position: "absolute", top: 44, right: 0, width: 180, ...card, boxShadow: "0 8px 24px rgba(0,0,0,.18)", padding: 8, zIndex: 60 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 6px", fontSize: 14 }}>
+                  Modo escuro
+                  <button onClick={() => setDark((v) => !v)}
+                    style={{ width: 36, height: 20, borderRadius: 12, border: "none", cursor: "pointer", background: dark ? BLUE : t.border, position: "relative" }}>
+                    <span style={{ position: "absolute", top: 2, left: dark ? 18 : 2, width: 16, height: 16, borderRadius: "50%", background: "#fff", transition: ".2s" }} />
+                  </button>
+                </div>
+                <div style={{ padding: "8px 6px", fontSize: 14, color: t.sub }}>Idioma · Sobre</div>
+              </div>
+            )}
+
+            {authOpen && (
+              <div style={{ position: "absolute", top: 44, right: 0, width: 250, ...card, boxShadow: "0 8px 24px rgba(0,0,0,.18)", padding: 16, zIndex: 60 }}>
+                <div style={{ fontWeight: 700, marginBottom: 12 }}>{authMode === "login" ? "Entrar" : "Criar conta"}</div>
+                <div style={{ display: "grid", gap: 8 }}>
+                  <input placeholder="E-mail" style={inputStyle} value={email} onChange={(e) => setEmail(e.target.value)} />
+                  <input placeholder="Senha" type="password" style={inputStyle} value={pass} onChange={(e) => setPass(e.target.value)} />
+                  {authMode === "register" && <input placeholder="Nome de usuário" style={inputStyle} />}
+                  {authMode === "login" && (
+                    <label style={{ fontSize: 13, color: t.sub, display: "flex", alignItems: "center", gap: 6 }}>
+                      <input type="checkbox" /> Lembrar de mim
+                    </label>
+                  )}
+                  {authErr && <div style={{ color: RED, fontSize: 12 }}>{authErr}</div>}
+                  <button style={btnPrimary} onClick={authMode === "login" ? doLogin : doRegister}>
+                    {authMode === "login" ? "Entrar" : "Cadastrar"}
+                  </button>
+                  <button onClick={() => { setAuthMode(authMode === "login" ? "register" : "login"); setAuthErr(""); }}
+                    style={{ background: "none", border: "none", color: BLUE, fontSize: 13, cursor: "pointer", fontFamily: "Inter, sans-serif" }}>
+                    {authMode === "login" ? "Criar conta" : "Já tenho conta"}
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {sidebar && (
+        <div style={{ position: "absolute", top: topOpen ? 72 : 70, right: 14, zIndex: 35, ...card, padding: 8, display: "flex", flexDirection: "column", gap: 6, boxShadow: "0 6px 20px rgba(0,0,0,.14)" }}>
+          {sideItems.map(({ id, icon, label }) => (
+            <button key={id} title={label} onClick={() => setScreen(id)}
+              style={{ width: 40, height: 40, borderRadius: 8, border: "none", cursor: "pointer", background: screen === id ? BLUE : "transparent", display: "grid", placeItems: "center" }}>
+              <Icon name={icon} size={19} color={screen === id ? "#fff" : t.sub} />
+            </button>
+          ))}
+        </div>
+      )}
+
+      <div style={{ position: "absolute", top: topOpen ? 72 : 16, left: 16, right: sidebar ? 70 : 16, bottom: 16, ...card, overflow: "auto", boxShadow: "0 10px 30px rgba(0,0,0,.15)" }}>
+        {screen === "home" && (
+          <div style={{ padding: 24 }}>
+            <h2 style={{ margin: "0 0 4px" }}>Olá, Bruno 👋</h2>
+            <p style={{ color: t.sub, marginTop: 0, fontSize: 14 }}>Documentos recentes</p>
+            <div style={{ display: "grid", gap: 10, marginBottom: 16 }}>
+              {docs.map((d) => (
+                <div key={d.id} onClick={() => setScreen("check")}
+                  style={{ ...card, background: t.surf2, padding: 14, display: "flex", alignItems: "center", gap: 12, cursor: "pointer" }}>
+                  <Icon name="file" size={20} color={BLUE} />
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontWeight: 600, fontSize: 14 }}>{d.name}</div>
+                    <div style={{ fontSize: 12, color: t.sub }}>{d.type} · {d.date}</div>
+                  </div>
+                  <span style={{ fontSize: 12, fontWeight: 600, color: d.status === "Revisado" ? GREEN : "#F59E0B" }}>{d.status}</span>
+                  <Icon name="chevron" size={16} color={t.sub} />
+                </div>
+              ))}
+            </div>
+            <div onClick={() => setScreen("upload")}
+              style={{ ...card, border: `2px dashed ${BLUE}`, padding: 18, textAlign: "center", color: BLUE, fontWeight: 600, cursor: "pointer", background: dark ? "#11203d" : "#f0f5ff" }}>
+              + Enviar novo documento
+            </div>
+          </div>
+        )}
+
+        {screen === "edit" && (
+          <div style={{ padding: 24 }}>
+            <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
+              {["B", "I", "↶"].map((x) => (
+                <button key={x} style={{ width: 34, height: 34, ...card, background: t.surf2, cursor: "pointer", color: t.text, fontWeight: 700 }}>{x}</button>
+              ))}
+            </div>
+            <div contentEditable suppressContentEditableWarning
+              style={{ ...card, background: t.surf2, minHeight: 280, padding: 16, fontSize: 14, lineHeight: 1.7, outline: "none" }}>
+              PREFEITURA DO RECIFE — Contrato de Prestação de Serviços nº 0428/2024. Edite o texto livremente antes de extrair os dados...
+            </div>
+            <button style={{ ...btnPrimary, marginTop: 14 }} onClick={() => { setScreen("check"); flash("Dados extraídos"); }}>
+              Salvar e extrair dados
+            </button>
+          </div>
+        )}
+
+        {screen === "upload" && (
+          <div style={{ padding: 24 }}>
+            <div style={{ ...card, border: `2px dashed ${t.border}`, padding: 48, textAlign: "center", background: t.surf2 }}>
+              {uploading ? (
+                <React.Fragment>
+                  <Icon name="upload" size={28} color={BLUE} style={{ animation: "spin 1s linear infinite" }} />
+                  <div style={{ marginTop: 14, height: 8, background: t.border, borderRadius: 6, overflow: "hidden" }}>
+                    <div style={{ width: `${progress}%`, height: "100%", background: BLUE, transition: ".1s" }} />
+                  </div>
+                  <p style={{ color: t.sub, fontSize: 13 }}>Processando... {progress}%</p>
+                </React.Fragment>
+              ) : (
+                <React.Fragment>
+                  <Icon name="upload" size={32} color={BLUE} />
+                  <p style={{ fontWeight: 600 }}>Arraste um PDF aqui ou clique para selecionar</p>
+                  <button style={btnPrimary} onClick={runUpload}>Selecionar arquivo</button>
+                </React.Fragment>
+              )}
+            </div>
+          </div>
+        )}
+
+        {screen === "download" && (
+          <div style={{ padding: 24 }}>
+            <h3 style={{ marginTop: 0 }}>Baixar arquivos processados</h3>
+            <div style={{ display: "grid", gap: 8, marginBottom: 16 }}>
+              {docs.map((d) => (
+                <label key={d.id} style={{ ...card, background: t.surf2, padding: 12, display: "flex", alignItems: "center", gap: 10, cursor: "pointer", fontSize: 14 }}>
+                  <input type="checkbox" checked={dlSel.includes(d.id)}
+                    onChange={() => setDlSel((s) => s.includes(d.id) ? s.filter((x) => x !== d.id) : [...s, d.id])} />
+                  <Icon name="file" size={18} color={BLUE} /> {d.name}
+                </label>
+              ))}
+            </div>
+            <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
+              {["pdf", "docx", "csv"].map((f) => (
+                <button key={f} onClick={() => setDlFmt(f)}
+                  style={{ padding: "8px 16px", borderRadius: 8, border: `1px solid ${dlFmt === f ? BLUE : t.border}`, background: dlFmt === f ? BLUE : "transparent", color: dlFmt === f ? "#fff" : t.text, cursor: "pointer", fontWeight: 600, textTransform: "uppercase", fontSize: 12 }}>{f}</button>
+              ))}
+            </div>
+            <button style={btnPrimary} onClick={() => flash("Download iniciado")} disabled={!dlSel.length}>
+              Baixar selecionados ({dlSel.length})
+            </button>
+          </div>
+        )}
+
+        {screen === "check" && (
+          <div style={{ display: "flex", height: "100%" }}>
+            <div style={{ flex: 1, padding: 24, overflow: "auto", borderRight: `1px solid ${t.border}` }}>
+              <h3 style={{ marginTop: 0, fontSize: 16 }}>PREFEITURA DO RECIFE — Contrato de Prestação de Serviços nº 0428/2024</h3>
+              <div style={{ fontSize: 14, lineHeight: 1.8, color: t.text }}>
+                <p>O presente contrato de <Spell on={hoverCorr === "c1"}>prestassão</Spell> de serviços é celebrado entre a Prefeitura do Recife, inscrita no CNPJ 11.222.333/0001-44, doravante CONTRATANTE, e a Construtora Beberibe Ltda., doravante CONTRATADA.</p>
+                <p>O objeto do presente instrumento é a prestação de serviços de manutenção predial, com <Spell on={hoverCorr === "c2"}>vigencia</Spell> de 12 meses a contar da assinatura.</p>
+                <p>O valor global do contrato é de R$ 248.500,00, a ser pago <Spell on={hoverCorr === "c3"}>atravez</Spell> de parcelas mensais, conforme medição dos serviços executados.</p>
+              </div>
+            </div>
+            <div style={{ width: 300, padding: 18, overflow: "auto", display: "flex", flexDirection: "column", gap: 16 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <div style={{ width: 34, height: 34, borderRadius: "50%", background: BLUE, display: "grid", placeItems: "center", color: "#fff", fontWeight: 700 }}>B</div>
+                <div>
+                  <div style={{ fontWeight: 600, fontSize: 13 }}>Bruno (Revisor)</div>
+                  <div style={{ fontSize: 12, color: t.sub }}>Tipo: Contrato</div>
+                </div>
+              </div>
+              <div>
+                <div style={{ fontSize: 12, fontWeight: 700, letterSpacing: .5, color: t.sub, marginBottom: 8 }}>
+                  CORREÇÕES ORTOGRÁFICAS · {corr.length} pendente(s)
+                </div>
+                <div style={{ display: "grid", gap: 8 }}>
+                  {corr.map((c) => (
+                    <div key={c.id} onMouseEnter={() => setHoverCorr(c.id)} onMouseLeave={() => setHoverCorr(null)}
+                      style={{ ...card, background: t.surf2, padding: 10, fontSize: 13 }}>
+                      <div style={{ marginBottom: 6 }}>
+                        <span style={{ color: RED, textDecoration: "line-through" }}>{c.wrong}</span>{" → "}
+                        <span style={{ color: GREEN, fontWeight: 600 }}>{c.right}</span>
+                      </div>
+                      <div style={{ display: "flex", gap: 6 }}>
+                        <button onClick={() => setCorr((x) => x.filter((y) => y.id !== c.id))}
+                          style={{ flex: 1, padding: "6px", borderRadius: 6, border: "none", background: GREEN, color: "#fff", cursor: "pointer", fontSize: 12, fontWeight: 600 }}>Aceitar</button>
+                        <button onClick={() => setCorr((x) => x.filter((y) => y.id !== c.id))}
+                          style={{ flex: 1, padding: "6px", borderRadius: 6, border: `1px solid ${RED}`, background: "transparent", color: RED, cursor: "pointer", fontSize: 12, fontWeight: 600 }}>Rejeitar</button>
+                      </div>
+                    </div>
+                  ))}
+                  {!corr.length && (
+                    <div style={{ fontSize: 13, color: GREEN, display: "flex", alignItems: "center", gap: 6 }}>
+                      <Icon name="ok" size={16} color={GREEN} /> Tudo revisado
+                    </div>
+                  )}
+                </div>
+              </div>
+              <div>
+                <div style={{ fontSize: 12, fontWeight: 700, letterSpacing: .5, color: t.sub, marginBottom: 8 }}>DADOS EXTRAÍDOS</div>
+                <div style={{ display: "grid", gap: 6 }}>
+                  {fields.map((f, i) => (
+                    <div key={f.k} style={{ ...card, background: t.surf2, padding: 8, fontSize: 12 }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                        <span style={{ color: t.sub }}>{f.k}</span>
+                        <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                          <span title={`Confiança: ${f.conf}`} style={{ width: 8, height: 8, borderRadius: "50%", background: confColor(f.conf) }} />
+                          <span style={{ cursor: "pointer", display: "grid", placeItems: "center" }} onClick={() => setEditIdx(editIdx === i ? null : i)}>
+                            <Icon name="edit" size={13} color={t.sub} />
+                          </span>
+                        </span>
+                      </div>
+                      {editIdx === i ? (
+                        <input autoFocus value={f.v} style={{ ...inputStyle, marginTop: 4, padding: "4px 8px", fontSize: 13 }}
+                          onChange={(e) => setFields((arr) => arr.map((x, j) => j === i ? { ...x, v: e.target.value } : x))}
+                          onBlur={() => setEditIdx(null)} />
+                      ) : (
+                        <div style={{ fontWeight: 600, marginTop: 2 }}>{f.v}</div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+              <button style={btnPrimary} onClick={() => { setScreen("download"); flash("Pronto para exportar"); }}>
+                Confirmar e exportar
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {toast && (
+        <div style={{ position: "absolute", bottom: 20, left: "50%", transform: "translateX(-50%)", zIndex: 70, background: "#1A1A1A", color: "#fff", padding: "10px 18px", borderRadius: 10, fontSize: 13, display: "flex", alignItems: "center", gap: 8, boxShadow: "0 8px 24px rgba(0,0,0,.3)" }}>
+          <Icon name="ok" size={16} color={GREEN} /> {toast}
+        </div>
+      )}
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<RevisAI />);
+</script>
+</body>
+</html>
